@@ -1,2 +1,6 @@
 Feature A
+<<<<<<< HEAD
 feature master2
+=======
+feature b
+>>>>>>> a058611 (file file was changed but this time in product)
