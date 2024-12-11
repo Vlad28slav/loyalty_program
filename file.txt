@@ -1,2 +1,2 @@
 Feature A
-feature master
+feature master1
