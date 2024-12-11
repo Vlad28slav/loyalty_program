@@ -1,6 +1,2 @@
 Feature A
-<<<<<<< HEAD
 feature master2
-=======
-feature master2
->>>>>>> another_branch
