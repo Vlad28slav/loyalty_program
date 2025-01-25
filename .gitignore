@@ -2,3 +2,4 @@
 .loyalty
 text
 db.sql
+__pycache__
