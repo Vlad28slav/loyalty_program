@@ -4,9 +4,9 @@ import logging
 from datetime import datetime
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Request
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, filters, MessageHandler
 from sqlalchemy.orm import Session
 
 from dotenv import load_dotenv
@@ -42,15 +42,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     user_name = update.message.chat.first_name
     id_user= update.message.chat.id
-    currentDateTime = datetime.now()
+    current_date_time= datetime.now()
     db_user_check = db.query(models.User).filter(models.User.id == id_user).first()
     if db_user_check is None:
-        db_user = models.User(id=id_user, program= '10!1', started_at= currentDateTime)
+        db_user = models.User(id=id_user, program= '10!1', started_at=current_date_time)
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
         answer = (
-            f'Hello, {user_name}, print /add_customer to add your first cutomers, or /set_program \n'
+            f'Hello, {user_name}, print /add_customer to add your first cutomers, or /set_program '
             f' to create your custom loyalty program, by default it is buy 10, get 1 for free!'
             )
     else:
@@ -64,17 +64,95 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addCustomer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
-    customer = update.message.text[13::]
-    answer= (
-            f'You added a new customer {customer}'
+    customer_name = update.message.text[13::]
+    id_user= update.message.chat.id
+    current_date_time = datetime.now()
+    customer_check = db.query(models.Customer).filter(
+        models.Customer.name == customer_name).filter(
+            models.Customer.seller_id == id_user).first()
+    if customer_check is None:
+        new_customer = models.Customer(
+            name= customer_name, seller_id= id_user, created_at= current_date_time)
+        db.add(new_customer)
+        db.commit()
+        db.refresh(new_customer)
+        answer= (
+                f'You have added a new customer {customer_name}'
+            )
+    else:
+        answer=(
+            f'You already have {customer_name} as a customer, try to change somehow '
+            f'name, you can use letters, numbers and other symbols'
         )
     await update.message.reply_text(answer)
+
+async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data["db"]
+    id_user= update.message.chat.id
+    customer_name_and_amount = update.message.text
+    customer_name_and_amount = customer_name_and_amount.split(' ')
+    answer=''
+    transaction = False
+    if len(customer_name_and_amount) == 2:
+        try:
+            customer_name= customer_name_and_amount[0]
+            amount = int(customer_name_and_amount[1])
+            transaction = True
+        except ValueError:
+            try:
+                amount = int(customer_name_and_amount[0])
+                customer_name= customer_name_and_amount[1]
+                transaction = True
+            except ValueError:
+                answer ="To create a purchase write your customer's name and amount"
+
+    else:
+        answer ="To create a purchase write your customer's name and amount"
+
+    if transaction is True:
+        answer = f'It is looks like you do not have {customer_name} as your registrated customer'
+        print(id_user, customer_name)
+        customer = db.query(models.Customer).filter(
+            models.Customer.seller_id == id_user).filter(
+                models.Customer.name == customer_name).first()
+        print(customer)
+        if customer:
+            bonus_program= db.query(models.User).filter(models.User.id == id_user).first().program
+            parsed_bonuses= bonus_program.slice('!')
+            nums_bonuses= len(parsed_bonuses)
+            bonus_total = 0
+            for i in range(1, nums_bonuses +1):
+                atempt = parsed_bonuses[-i]
+                amount_for_bonus_and_bonus = atempt.slice(',')
+                if amount > int(amount_for_bonus_and_bonus[0]):
+                    bonus_size = (amount/int(amount_for_bonus_and_bonus[0])) // 1 #rounding down to get the bonus size
+                    bonus_total = int(amount_for_bonus_and_bonus[1]) * bonus_size
+                    break
+            old_amount= customer.current_amount
+            new_amount = old_amount + amount
+            old_bonus = customer.bonuses
+            new_bonus = old_bonus + bonus_total
+            customer.current_amount = new_amount
+            customer.bonuses = new_bonus
+            db.commit()
+            db.refresh(customer)
+            answer=(
+                f'{customer_name} bought {amount} and deserved for {bonus_total} of reward! In tota'
+                f'l {customer_name} spent {new_amount}, and received {new_bonus} at yours bussines'
+                )
+
+        
+    
+    await update.message.reply_text(answer)
+
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("add_customer", addCustomer))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, purchase))
     db = SessionLocal()
     application.bot_data["db"] = db
     app.state.bot_app = application
