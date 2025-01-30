@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from models import SessionLocal, engine
 
 import models
-import schemas
 
 
 
@@ -28,6 +27,7 @@ load_dotenv(override=True)
 TOKEN = os.getenv("TOKEN")
 WEB_HOOK = os.getenv("WEB_HOOK")
 WEBHOOK_PATH = "/webhook"
+ADD_CUSTOMER_COMMAND = "add_customer"
 
 models.Base.metadata.create_all(bind=engine)
 def get_db():
@@ -45,7 +45,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_date_time= datetime.now()
     db_user_check = db.query(models.User).filter(models.User.id == id_user).first()
     if db_user_check is None:
-        db_user = models.User(id=id_user, program= '10!1', started_at=current_date_time)
+        db_user = models.User(id=id_user, started_at=current_date_time)
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
@@ -64,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def addCustomer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
-    customer_name = update.message.text[13::]
+    customer_name = update.message.text.replace(f'/{ADD_CUSTOMER_COMMAND}', '').strip()
     id_user= update.message.chat.id
     current_date_time = datetime.now()
     customer_check = db.query(models.Customer).filter(
@@ -88,6 +88,8 @@ async def addCustomer(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
+    customer_name=''
+    amount=0
     id_user= update.message.chat.id
     customer_name_and_amount = update.message.text
     customer_name_and_amount = customer_name_and_amount.split(' ')
@@ -111,33 +113,33 @@ async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if transaction is True:
         answer = f'It is looks like you do not have {customer_name} as your registrated customer'
-        print(id_user, customer_name)
         customer = db.query(models.Customer).filter(
             models.Customer.seller_id == id_user).filter(
                 models.Customer.name == customer_name).first()
-        print(customer)
         if customer:
+            amount1= amount
             bonus_program= db.query(models.User).filter(models.User.id == id_user).first().program
-            parsed_bonuses= bonus_program.slice('!')
+            parsed_bonuses= bonus_program.split('!')
             nums_bonuses= len(parsed_bonuses)
             bonus_total = 0
             for i in range(1, nums_bonuses +1):
                 atempt = parsed_bonuses[-i]
-                amount_for_bonus_and_bonus = atempt.slice(',')
+                amount_for_bonus_and_bonus = atempt.split(',')
                 if amount > int(amount_for_bonus_and_bonus[0]):
                     bonus_size = (amount/int(amount_for_bonus_and_bonus[0])) // 1 #rounding down to get the bonus size
-                    bonus_total = int(amount_for_bonus_and_bonus[1]) * bonus_size
-                    break
+                    bonus_temp = int(amount_for_bonus_and_bonus[1]) * bonus_size
+                    bonus_total= int(bonus_temp + bonus_total)
+                    amount= amount -(bonus_size * int(amount_for_bonus_and_bonus[0]))
             old_amount= customer.current_amount
-            new_amount = old_amount + amount
+            new_amount = old_amount + amount1
             old_bonus = customer.bonuses
-            new_bonus = old_bonus + bonus_total
+            new_bonus = int(old_bonus + bonus_total)
             customer.current_amount = new_amount
             customer.bonuses = new_bonus
             db.commit()
             db.refresh(customer)
             answer=(
-                f'{customer_name} bought {amount} and deserved for {bonus_total} of reward! In tota'
+                f'{customer_name} bought {amount1} and deserved for {bonus_total} of reward! In tota'
                 f'l {customer_name} spent {new_amount}, and received {new_bonus} at yours bussines'
                 )
 
@@ -151,7 +153,7 @@ async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lifespan(app: FastAPI):
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("add_customer", addCustomer))
+    application.add_handler(CommandHandler(ADD_CUSTOMER_COMMAND, addCustomer))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, purchase))
     db = SessionLocal()
     application.bot_data["db"] = db
