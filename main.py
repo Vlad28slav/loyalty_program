@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from dotenv import load_dotenv
 from models import SessionLocal, engine
+from tools import validation_program
 
 import models
 
@@ -28,6 +29,7 @@ TOKEN = os.getenv("TOKEN")
 WEB_HOOK = os.getenv("WEB_HOOK")
 WEBHOOK_PATH = "/webhook"
 ADD_CUSTOMER_COMMAND = "add_customer"
+SET_PROGRAM_COMMAND = 'set_program'
 
 models.Base.metadata.create_all(bind=engine)
 def get_db():
@@ -62,7 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(answer)
 
-async def addCustomer(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def add_customer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
     customer_name = update.message.text.replace(f'/{ADD_CUSTOMER_COMMAND}', '').strip()
     id_user= update.message.chat.id
@@ -125,7 +127,7 @@ async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
             for i in range(1, nums_bonuses +1):
                 atempt = parsed_bonuses[-i]
                 amount_for_bonus_and_bonus = atempt.split(',')
-                if amount > int(amount_for_bonus_and_bonus[0]):
+                if amount >= int(amount_for_bonus_and_bonus[0]):
                     bonus_size = (amount/int(amount_for_bonus_and_bonus[0])) // 1 #rounding down to get the bonus size
                     bonus_temp = int(amount_for_bonus_and_bonus[1]) * bonus_size
                     bonus_total= int(bonus_temp + bonus_total)
@@ -139,13 +141,34 @@ async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
             db.commit()
             db.refresh(customer)
             answer=(
-                f'{customer_name} bought {amount1} and deserved for {bonus_total} of reward! In tota'
-                f'l {customer_name} spent {new_amount}, and received {new_bonus} at yours bussines'
+                f'{customer_name} bought {amount1} and deserved for {bonus_total} of reward! In tot'
+                f'al {customer_name} spent {new_amount}, and received {new_bonus} at yours bussines'
                 )
-
-        
-    
     await update.message.reply_text(answer)
+
+async def set_program(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = context.bot_data["db"]
+    id_user= update.message.chat.id
+    program =update.message.text.replace(f'/{SET_PROGRAM_COMMAND}', '')
+    print(program)
+    new_program = validation_program(program)
+    answer=(
+                'To create a new program write a new valid one. Type /set_program AmountToGetBon'
+                'us BonusSize, for example /set_program 15 1 \n'
+                'If you want to create few levels of reward use following syntaxis : /set_prog'
+                'ram AmountToGetBonus BonusSize, AmountToGetBonus BonusSize, AmountToGetBonus'
+                ' BonusSize, for example /set_program 15 1, 20 2, 30 4'
+
+                )
+    if new_program !=0 :
+        user = db.query(models.User).filter(models.User.id == id_user).first()
+        user.program = new_program
+        db.commit()
+        db.refresh(user)
+        answer='You have changed your loyalty rewards successfully!'
+    await update.message.reply_text(answer)
+
+
 
 
 
@@ -153,7 +176,8 @@ async def purchase(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def lifespan(app: FastAPI):
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler(ADD_CUSTOMER_COMMAND, addCustomer))
+    application.add_handler(CommandHandler(ADD_CUSTOMER_COMMAND, add_customer))
+    application.add_handler(CommandHandler(SET_PROGRAM_COMMAND, set_program))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, purchase))
     db = SessionLocal()
     application.bot_data["db"] = db

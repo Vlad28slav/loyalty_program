@@ -25,7 +25,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index= True)
-    program = Column(String, default='10,1!15,2') # format is'AmountToGetBonus,BonusSize!AmountToGetBonus,BonusSize'
+    program = Column(String, default='5,100!10,300!20,1000') # format is'AmountToGetBonus,BonusSize!AmountToGetBonus,BonusSize'
     started_at = Column(DateTime, index=True)
 
 
