@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from dotenv import load_dotenv
 from models import SessionLocal, engine
 from tools import validation_program
+from help_text import help_text
 
 import models
 
@@ -30,6 +31,7 @@ WEB_HOOK = os.getenv("WEB_HOOK")
 WEBHOOK_PATH = "/webhook"
 ADD_CUSTOMER_COMMAND = "add_customer"
 SET_PROGRAM_COMMAND = 'set_program'
+HELP ='help'
 
 models.Base.metadata.create_all(bind=engine)
 def get_db():
@@ -53,7 +55,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.refresh(db_user)
         answer = (
             f'Hello, {user_name}, print /add_customer to add your first cutomers, or /set_program '
-            f' to create your custom loyalty program, by default it is buy 10, get 1 for free!'
+            f' to create your custom loyalty program, by default it is buy 10, get 1 for free and '
+            f'for 15 get 2! You can create custom bonuses with /set_program command. Type /help to'
+            f'find more about this command and many more'
             )
     else:
         time = db.query(models.User).filter(models.User.id == id_user).first().started_at
@@ -63,6 +67,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     await update.message.reply_text(answer)
+
+async def help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    answer = help_text
+
+
+    await update.message.reply_text(answer)
+
 
 async def add_customer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     db = context.bot_data["db"]
@@ -178,6 +189,7 @@ async def lifespan(app: FastAPI):
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler(ADD_CUSTOMER_COMMAND, add_customer))
     application.add_handler(CommandHandler(SET_PROGRAM_COMMAND, set_program))
+    application.add_handler(CommandHandler(HELP, help))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, purchase))
     db = SessionLocal()
     application.bot_data["db"] = db
